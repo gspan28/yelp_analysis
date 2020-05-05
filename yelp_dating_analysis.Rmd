@@ -1,0 +1,440 @@
+---
+title: "yelp_dating_analysis"
+author: "Grace Pan"
+date: "4/23/2020"
+output: html_document
+---
+
+**What makes a restaurant a good date spot? Will my date like barbecue or sushi? This project uses a geographically diverse subset of Yelp data across North America to analyze and predict what type of restaurants make good date spots. The researcher scrapes keywords relating to dating in Yelp user comments as a proxy to determine whether a restaurant is a good date spot. The results are useful not only for individuals trying to impress their dates, but also for professionals in the restaurant business looking to attract more customers.** 
+
+
+```{r setup, include = FALSE}
+
+# There is only one commit on my Github because I had to move the files from an old repo.
+
+fillColor = "#D32323" # yelpy-red
+fillColor2 = "#0073BB" # blue
+
+library(stringr) #  string manipulation
+library(lubridate) #  date manipulation
+library('wordcloud') #  wordcloud
+library(tidytext) # tidy implementation of NLP methods
+library(DT)       # table format display of data
+library(leaflet) # maps
+library(ggplot2)
+library(mapview)
+library(fastDummies)
+library(janitor)
+library(gt)
+library(plyr)
+library(plotly)
+library(tidyverse) #  data manipulation and graphs
+library(dplyr)
+
+
+```
+
+The following visualizations analyze a subset of Yelp data in seven metropolitan cities: Montreal, QC; Madison, WI; Pittsburgh, PA; Toronto, ON; Cleveland, OH; Las Vegas, NV; and Charlotte, NC.
+
+```{r 1, include = FALSE, cache = TRUE}
+
+# Read in data sets and joined together  biz/review.
+
+business <- read_csv("yelp_business.csv") 
+
+business <- business %>%
+  select(business_id, name, address, city, state, postal_code , latitude , longitude,  stars ,  is_open, categories) %>%
+  filter(is_open == 1)
+
+reviews <- read_csv("yelp_review.csv")
+
+
+reviews <- reviews %>%
+  select(business_id, text)
+
+business_reviews_join <- business %>%
+  left_join(reviews, by = "business_id") %>%
+  filter(! is.na(text), ! is.na(name)) %>%
+  sample_n(50000)
+ 
+```
+
+## 10 Most Popular Categories of Business
+
+```{r 2, echo = FALSE, cache= TRUE}
+
+# PLOTTING THE 10 MOST POPULAR CATEGORIES OF BUSINESS IN A BAR PLOT
+
+# Made a new tibble called categories. I used str_split to separate the descriptors originally divided by semicolons. I renamed the categories column as "Name."
+
+categories = str_split(business$categories,";")
+categories = as.data.frame(unlist(categories))
+colnames(categories) = c("Name")
+
+# Found the top 10 categories of business by grouping, counting, and arranging in descending order. 
+
+categories_head <- categories %>%
+  group_by(Name) %>%
+  dplyr::summarise(Count = n()) %>%
+  arrange(desc(Count)) %>%
+  ungroup() %>%
+  mutate(Name = reorder(Name,Count)) %>%
+  head(10) 
+
+# Plotted the top ten categories of business in a bar plot and formatted accordingly. 
+
+categories_head_plot <- categories_head %>%
+  ggplot(aes(x = Name,y = Count)) +
+  geom_bar(stat='identity', colour="white", fill =fillColor) +
+  geom_text(aes(x = Name, y = 1, label = paste0("(",Count,")",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'Name of Category', y = 'Count', 
+       title = 'Top 10 Categories of Business',
+       subtitle = "Filting data to analyze the catetories Restaurants, Food, and Bars",
+       caption = "Source: Yelp") +
+  coord_flip() + 
+  theme_bw()
+
+categories_head_plot
+ 
+```
+
+
+```{r q2b, include = FALSE, cache= TRUE}
+
+ggsave("final_project/categories_head_plot.png")
+
+```
+
+
+## Map of Business Parties in Las Vegas
+
+```{r 3, echo = FALSE, cache= TRUE}
+
+# MAP OF BUSINESS PARTIES IN LAS VEGAS
+
+# Filtered for all businesses located in Las Vegas. Used median longitude and latitude coordinates in dataset to set the view of the map.
+
+LasvegasCoords = business %>% filter(city == "Las Vegas")
+
+center_lon = median(LasvegasCoords$longitude,na.rm = TRUE)
+center_lat = median(LasvegasCoords$latitude,na.rm = TRUE)
+
+# Layered coordinates onto National Geographic World Map. Formatted settings of map.
+las_vegas_map <- leaflet(LasvegasCoords) %>% 
+  addProviderTiles("Esri.NatGeoWorldMap") %>%
+  addCircles(lng = ~longitude, lat = ~latitude)  %>%
+  setView(lng=center_lon, lat=center_lat,zoom = 13)
+
+las_vegas_map 
+
+
+```
+
+```{r q3b, include = FALSE, cache= TRUE}
+
+las_vegas_map <- leaflet() %>% addTiles()
+mapshot(las_vegas_map, file = "las_vegas_map.png")
+
+# write_rds LasVegasCoord
+
+
+```
+
+## Map of Business Parties in Montreal 
+
+```{r 4, echo = FALSE, cache= TRUE}
+
+# MAP OF BUSINESS PARTIES IN MONTREAL
+
+# Filtered for all businesses located in Montreal. Used median longitude and
+# latitude coordinates in dataset to set the view of the map.
+
+
+MontrealCoords = business %>% filter(city == "Montreal")
+
+center_lon = median(MontrealCoords$longitude,na.rm = TRUE)
+center_lat = median(MontrealCoords$latitude,na.rm = TRUE)
+
+# Layered coordinates onto National Geographic World Map. Formatted settings of map.
+
+montreal_map <- leaflet(MontrealCoords) %>% 
+  addProviderTiles("Esri.NatGeoWorldMap") %>%
+  addCircles(lng = ~longitude, lat = ~latitude)  %>%
+  setView(lng=center_lon, lat=center_lat,zoom = 13)
+
+montreal_map 
+
+```
+
+## Detecting Date Spots based on Yelp Review Date Keywords
+
+```{r 5, include= FALSE, cache= TRUE}
+
+# I mutated a new column called detect that detects the strings such as "date," "boyfriend," and "girlfriend."
+
+detect <- business_reviews_join %>%
+  filter(grepl('Restaurant|Food|Bars', categories)) %>%
+  mutate(string_detect = str_detect(text, paste(c("date", "boyfriend", "girlfriend", "husband", "wife", "anniversary", "Valentine", "romantic", "cozy", "significant other", "crush", "fiance", "fiancee", "partner", "go out"), collapse = "|")))
+
+# Calculating percentage of date spots
+
+detect_percent <- detect %>%
+  filter(string_detect == TRUE) %>%
+  dplyr::summarize(divide = dplyr::n() / 33787)
+
+detect_percent
+
+```
+
+Out of the restaurants in the dataset, **`r detect_percent`** percent are considered good date spots, based on a date-related keyword search of Yelp user reviews. 
+
+```{r 6, include = FALSE, cache= TRUE}
+
+# Used str_replace_all to remove parentheses
+
+# Filtered for the restaurant/food/bar categories and used pivot_longer and
+# dummy_cols in order to create columns for each food type.
+
+parentheses = paste(c("\\(New\\)", "\\(Tradit", "\\(Traditional\\)", "ional\\)"), collapse = "|")
+
+x <- business_reviews_join %>%
+  select(business_id, categories) %>%
+  filter(grepl('Restaurant|Food|Bars', categories)) %>%
+  mutate(categories = str_replace_all(categories, parentheses, "")) %>%
+  separate(categories,sep=";",fill="right",into=c("A","B","C","D", "E", "F", "G", "H","I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T","U","V", "W", "X", "Y", "Z")) %>%
+  pivot_longer(-business_id, names_to = "Group",values_to="Food") %>%
+  dummy_cols(select_columns = "Food") %>%
+  filter(is.na(Food)==FALSE) 
+
+x <- x %>%
+  select(c("business_id", "Food_Acai Bowls",  "Food_African",  "Food_Afghan" , "Food_American ", "Food_Arabian"  , "Food_Argentine"  , "Food_Armenian"  , "Food_Australian", "Food_Asian Fusion"  , "Food_Austrian" ,  "Food_Bagels"  ,  "Food_Bakeries"  ,"Food_Bangladeshi"  ,"Food_Beer Bar"  , "Food_Beer Garden"  , "Food_Beer Gardens" , "Food_Belgian"  ,  "Food_Barbeque",  "Food_Breweries" , "Food_Bars", "Food_Basque"   ,"Food_Brasseries" ,  "Food_Bavarian" , "Food_Beer" , "Food_Breakfast & Brunch", "Food_British", "Food_Bistros" ,  "Food_Bubble Tea"  ,  "Food_Buffets"  ,"Food_Burgers" , "Food_Cafes",  "Food_Cajun/Creole" , "Food_Cambodian"  ,  "Food_Canadian "   , "Food_Cantonese"  , "Food_Caribbean"  ,  "Food_Cheesesteaks"  , "Food_Chicken Shop" ,"Food_Chocolatiers & Shops", "Food_Chinese"  ,"Food_Cuban"  , "Food_Comfort Food" ,  "Food_Chicken Wings"   ,  "Food_Creperies",  "Food_Colombian"   , "Food_Comfort Food"    , "Food_Delicatessen",  "Food_Delis" ,  "Food_Diners" , "Food_Desserts"  , "Food_Dive Bars", "Food_Donuts" , "Food_Dim Sum" ,    "Food_Egyptian"  ,  "Food_Ethiopian" , "Food_Ethnic Food" , "Food_Fast Food"  , "Food_Filipino" , "Food_Fish & Chips"  ,   "Food_Food Court", "Food_French" , "Food_Fish & Chips"  ,  "Food_Food Court" , "Food_Gastropubs" , "Food_Gelato"  , "Food_Guamanian"   , "Food_Greek","Food_Gluten-Free"   ,  "Food_Halal" ,"Food_Hungarian" ,  "Food_Hawaiian"  ,  "Food_Himalayan/Nepalese" , "Food_Hot Dogs"   ,   "Food_Hot Pot"   ,  "Food_Ice Cream & Frozen Yogurt"  , "Food_Indian"  ,"Food_Irish" ,  "Food_Indonesian"    ,  "Food_Izakaya"  , "Food_Japanese" ,  "Food_Italian"   , "Food_Juice Bars & Smoothies",  "Food_Kebab" ,  "Food_Korean" , "Food_Laotian"  ,"Food_Latin American"    ,  "Food_Lebanese", "Food_Live/Raw Food"  , "Food_Local Flavor"  ,  "Food_Mediterranean" , "Food_Malaysian"  ,  "Food_Macarons"  , "Food_Mexican" , "Food_Middle Eastern" ,  "Food_Mongolian"  , "Food_New Mexican Cuisine"  ,  "Food_Noodles"    , "Food_Pakistani", "Food_Persian/Iranian" , "Food_Pizza"  , "Food_Pan Asian"    , "Food_Portuguese",  "Food_Popcorn Shops" ,  "Food_Scandinavian" , "Food_Poutineries"  ,"Food_Peruvian", "Food_Puerto Rican" ,  "Food_Ramen" ,  "Food_Russian" , "Food_Salvadoran" ,  "Food_Scottish" ,  "Food_Serbo Croatian"   ,  "Food_Shanghainese"  ,  "Food_Sandwiches", "Food_Salad", "Food_Seafood",  "Food_Smokehouse", "Food_Southern", "Food_Soup" , "Food_Soul Food",  "Food_South African" , "Food_Specialty Food" , "Food_Sri Lankan"  , "Food_Steakhouses"  , "Food_Swabian" ,   "Food_Szechuan"  ,  "Food_Tacos",  "Food_Thai" ,  "Food_Tapas/Small Plates", "Food_Tex-Mex", "Food_Tiki Bars" ,  "Food_Thai" ,"Food_Turkish" , "Food_Tuscan"  , "Food_Ukrainian",  "Food_Vegetarian",  "Food_Vegan",  "Food_Vietnamese"  , "Food_Venezuelan"  ,  "Food_Whiskey Bars" , "Food_Wine Bars"  , "Food_Waffles", "Food_Wraps")) %>%
+  clean_names() %>%
+  group_by(business_id) %>%
+  summarise_all(funs(sum))
+
+
+# Create row with sum of restaurant type counts
+
+x_sum <- rbind(x, c("total", colSums(x[2:140])))
+
+
+# Select only the row which has the sums 
+
+summed <- x_sum %>%
+  slice (15666)
+ 
+# Reshape data and subset to columns with at least 10 count
+
+saveColumns <- summed %>%
+  pivot_longer(-business_id, names_to="type", values_to="count")
+
+saveColumns$count <- as.numeric(saveColumns$count)
+
+saveColumns <- saveColumns %>%
+  filter(count >= 500)
+
+
+# Select columns from original table using the column labels from SaveColumns which have at least than 10 count
+
+x_sum <- x_sum %>%
+  select(business_id, contains(saveColumns$type))
+
+
+```
+
+```{r r6, include = FALSE, cache= TRUE}
+
+# Merge restaurant type and string detect datasets
+
+merged <- x_sum %>%
+  left_join(detect, by = "business_id") 
+
+# Mutate all values > 1 to 1 
+
+one <- function (number) {
+  str_replace(number, "2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19", "1")}
+
+merged <- merged %>%
+  mutate_at(.vars = vars(food_american:food_wine_bars), funs(one(.))) 
+
+merged <- merged %>%
+  select(-c(food_beer_garden, food_beer_gardens, food_breweries, food_beer_bar, food_beer, food_buffets, food_diners, food_gluten_free, food_vegan))
+
+
+
+# (manual, unused code)
+           
+# merged$food_american <- revalue(merged$food_american, c("2" = "1", "3" = "1")) 
+# merged$food_asian_fusion <- revalue(merged$food_asian_fusion, c("2" = "1", "3" = "1")) 
+# merged$food_bakeries <- revalue(merged$food_bakeries, c("2" = "1", "3" = "1")) 
+# merged$food_chinese <- revalue(merged$food_chinese, c("2" = "1", "3" = "1")) 
+# merged$food_japanese <- revalue(merged$food_japanese, c("2" = "1", "3" = "1")) 
+# merged$food_bars <- revalue(merged$food_bars, c("2" = "1", "3" = "1")) 
+# merged$food_breakfast_brunch <- revalue(merged$food_breakfast_brunch, c("2" = "1", "3" = "1")) 
+
+  
+
+```
+
+## Regression Model for Effect of Type of Restaurant on Restaurant Ratings
+
+```{r 7, echo = FALSE, cache= TRUE}
+
+# Regression gt for effect of type of restaurant on restaurant ratings
+
+merged_lm_stars <- merged %>%
+  select(- c(business_id, name, address, city, state, postal_code, latitude, longitude, is_open, categories, text, string_detect)) %>%
+  slice (-33878) 
+
+lm_stars <- lm(stars ~ ., data = merged_lm_stars)
+
+lm_stars_tidy <- lm_stars %>%
+  tidy(conf.int = TRUE) %>%
+  select(term, estimate, conf.low, conf.high) %>%
+  arrange(desc(estimate)) %>%
+  mutate(term = gsub("food_", "", term)) %>%
+   mutate(term = gsub("1", "", term))
+
+lm_stars_gt <- lm_stars_tidy %>%
+  gt() %>%
+  fmt_number(columns = vars(estimate, conf.low), decimals = 3) %>%
+  fmt_number(columns = vars(conf.high), decimals = 4) %>%
+  tab_header(
+    title = "Effect of Type of Restaurant on Restaurant Ratings",
+    subtitle = "Data from Yelp") %>%
+    cols_label(
+      "term" = "Variable",
+      "estimate" = "Estimate",
+      "conf.low" = "Lower bound",
+      "conf.high" = "Upper bound") 
+
+lm_stars_gt
+
+
+
+
+```
+
+## Regression Model for Effect of Type of Restaurant on Likelihood of Being a Date Spot
+
+```{r r 8, echo = FALSE, cache= TRUE}
+
+# Regression gt for effect of type of restaurant on likelihood of being a date spot (based on string detect)
+
+
+merged_lm_date <- merged %>%
+  select(- c(business_id, name, address, city, state, postal_code, latitude, longitude, is_open, categories, text, stars)) %>%
+  slice (-33878) 
+
+lm_date <- lm(string_detect ~ . , data = merged_lm_date)
+
+
+lm_date_tidy <- lm_date %>%
+  tidy(conf.int = TRUE) %>%
+  select(term, estimate, conf.low, conf.high) %>%
+  arrange(desc(estimate)) %>%
+  mutate(term = gsub("food_", "", term)) %>%
+  mutate(term = gsub("1", "", term))
+
+
+lm_date_gt <- lm_date_tidy %>%
+  gt() %>%
+  fmt_number(columns = vars(estimate, conf.low), decimals = 3) %>%
+  fmt_number(columns = vars(conf.high), decimals = 4) %>%
+  tab_header(
+    title = "Effect of Type of Restaurant on Likelihood of Being a Date Spot",
+    subtitle = "Data from Yelp") %>%
+    cols_label(
+      "term" = "Variable",
+      "estimate" = "Estimate",
+      "conf.low" = "Lower bound",
+      "conf.high" = "Upper bound")
+
+lm_date_gt
+
+
+
+
+```
+
+```{r 9, echo = FALSE, cache= TRUE}
+
+# Creating plot for Rating Regression based on Type of Food. 
+# Dropped intercept
+# Hover label over food type
+# Allow user to select 3 inputs, 
+
+
+lm_stars_tidy <- lm_stars_tidy %>% 
+  slice(-1) 
+
+write_rds(lm_stars_tidy, "final_project/lm_stars_tidy.RDS")
+
+lm_stars_plot <- lm_stars_tidy %>% 
+  ggplot(aes(x = reorder(term, -estimate), y = estimate, group = 1, 
+             text = paste("Cuisine: ", term,
+                          "<br>Coefficient: ", estimate
+                                                   ))) +
+  geom_bar(stat = "identity", fill = "light blue", ) +
+  labs(title = "Effect of Restaurant Type on User Ratings", subtitle = "Ratings on a 1-5 scale",
+       x = "Type of Food", y = "Coefficient",caption = "Source: Yelp") +
+  theme_classic() +
+  theme(axis.text.x= element_blank(),
+        axis.ticks.x=element_blank())
+
+lm_stars_plot
+
+ggplotly(lm_stars_plot, tooltip = "text") %>%
+   layout(title = list(text = paste0('Effect of Restaurant Type on User Ratings',
+                                    '<br>',
+                                    '<sup>',
+                                    'Ratings on a 1-5 scale',
+                                    '</sup>')),
+    annotations = 
+          list(x = 1, y = -.08, text = "Source: Yelp", 
+                showarrow = F, xref='paper', yref='paper', 
+                xanchor='right', yanchor='auto', xshift=0, yshift=0,
+                font=list(size=12)))
+
+
+
+lm_date_tidy <- lm_date_tidy %>% 
+  slice(-1) 
+
+write_rds(lm_date_tidy, "final_project/lm_date_tidy.RDS")
+
+lm_date_plot <- lm_date_tidy %>% 
+  slice(-1) %>%
+  ggplot(aes(x = reorder(term, -estimate), y = estimate, gr oup = 1, 
+             text = paste("Cuisine: ", term,
+                          "<br>Coefficient: ", estimate
+                                                   ))) +
+  geom_bar(stat = "identity", fill = "dark green", ) +
+  labs(title = "Effect of Restaurant Type on Date Appropriateness", subtitle = "Date appropriateness determined by scraping user reviews for date-related keywords",
+       x = "Type of Food", y = "Coefficient",caption = "Source: Yelp") +
+  theme_classic() +
+  theme(axis.text.x= element_blank(),
+        axis.ticks.x=element_blank())
+
+lm_date_plot
+
+ggplotly(lm_date_plot, tooltip = "text") %>%
+  layout(title = list(text = paste0('Effect of Restaurant Type on Date Appropriateness',
+                                    '<br>',
+                                    '<sup>',
+                                    'Date appropriateness determined by scraping user reviews for date-related keywords',
+                                    '</sup>')),
+          annotations = 
+          list(x = 1, y = -.08, text = "Source: Yelp", 
+                showarrow = F, xref='paper', yref='paper', 
+                xanchor='right', yanchor='auto', xshift=0, yshift=0,
+                font=list(size=12)))
+
+```
+
+
+
+```
+
