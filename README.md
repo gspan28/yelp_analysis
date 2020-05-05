@@ -1,1 +1,1 @@
-# yelp_analysis
+What makes a restaurant a good date spot? Will my date like barbecue or sushi? This project uses a geographically diverse subset of Yelp data across North America to analyze and predict what type of restaurants make good date spots. The researcher scrapes keywords relating to dating in Yelp user comments as a proxy to determine whether a restaurant is a good date spot. The results are useful not only for individuals trying to impress their dates, but also for professionals in the restaurant business looking to attract more customers.
