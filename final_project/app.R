@@ -318,9 +318,11 @@ ui <- navbarPage(theme = shinytheme("united"),
                 is associated with a positive change of Yelp ratings, and vice versa. The same logic applies 
                 for the effect of cuisine on date-worthiness."),
                           
-                          p("The Bayesian interpretation of the confidence intervals suggests that we are 95% 
-                certain that the true value is within our upper and lower bounds of our estimate. 
-                The Frequentist interpretation of the confidence intervals suggests that 95% 
+                          p("Observing the confidence intervals, one should look for whether the confidence interval
+                for a particular point estimate includes zero. If a 95% confidence interval includes zero, then there
+                is no statistically meaningful difference between the groups.The Bayesian interpretation of the 
+                confidence intervals suggests that we are 95% certain that the true value is within our upper 
+                and lower bounds of our estimate. The Frequentist interpretation of the confidence intervals suggests that 95% 
                 of the time that we perform this model, the intervals constructed will contain 
                 the true but unknown population parameter.")),
 
