@@ -11,6 +11,7 @@ output: html_document
 ```{r setup, include = FALSE}
 
 # There is only one commit on my Github because I had to move the files from an old repo.
+# yelp_review.csv too large too commit
 
 fillColor = "#D32323" # yelpy-red
 fillColor2 = "#0073BB" # blue
@@ -407,7 +408,7 @@ write_rds(lm_date_tidy, "final_project/lm_date_tidy.RDS")
 
 lm_date_plot <- lm_date_tidy %>% 
   slice(-1) %>%
-  ggplot(aes(x = reorder(term, -estimate), y = estimate, gr oup = 1, 
+  ggplot(aes(x = reorder(term, -estimate), y = estimate, group = 1, 
              text = paste("Cuisine: ", term,
                           "<br>Coefficient: ", estimate
                                                    ))) +
@@ -436,5 +437,4 @@ ggplotly(lm_date_plot, tooltip = "text") %>%
 
 
 
-```
 

@@ -4,6 +4,7 @@ library(readr)
 library(plotly)
 library(tidyverse)
 library(shinythemes)
+library(gt)
 
 
 # Reads in data
@@ -201,7 +202,7 @@ ui <- navbarPage(theme = shinytheme("united"),
                                                 "Vegetarian" = "vegetarian",
                                                 "Vietnamese" = "vietnamese",
                                                 "Wine Bars" = "wine_bars"),
-                                              selected = "korean"),
+                                              selected = "chinese"),
                                   selectInput("cuisiney",
                                               "Cuisine 2:", 
                                               choices = list(
@@ -240,7 +241,7 @@ ui <- navbarPage(theme = shinytheme("united"),
                                                   "Vegetarian" = "vegetarian",
                                                   "Vietnamese" = "vietnamese",
                                                   "Wine Bars" = "wine_bars"),
-                                              selected = "barbeque"),
+                                              selected = "american"),
                                   selectInput("cuisinez", 
                                               "Cuisine 3:", 
                                               choices = list(
@@ -279,15 +280,14 @@ ui <- navbarPage(theme = shinytheme("united"),
                                                 "Vegetarian" = "vegetarian",
                                                 "Vietnamese" = "vietnamese",
                                                 "Wine Bars" = "wine_bars"),
-                                              selected = "mexican")),
+                                              selected = "italian")),
                               
                               mainPanel(
-                                  mainPanel(
                                       tabsetPanel(
                                           tabPanel("Select 3",plotlyOutput("date_plotly")),
                                           tabPanel("All", plotlyOutput("date_all"))
                                       )
-                          )))),
+                          ))),
                         
                  
                  tabPanel("Yelp Business Types",
@@ -415,7 +415,8 @@ server <- function(input, output) {
                        text = paste("Cuisine: ", term,
                                     "<br>Coefficient: ", estimate
                        ))) +
-            geom_bar(stat = "identity", fill = "light blue" ) +
+           geom_pointrange(aes(ymin = conf.low, ymax = conf.high), width = 0.1) +
+           geom_bar(stat = "identity", fill = "light blue" ) +
             labs(title = "Effect of Restaurant Type on User Ratings", subtitle = "Ratings on a 1-5 scale",
                  x = "Type of Food", y = "Coefficient",caption = "Source: Yelp") +
             theme_classic()
@@ -441,8 +442,8 @@ server <- function(input, output) {
         stars_all <- lm_stars_tidy %>% 
             ggplot(aes(x = reorder(term, -estimate), y = estimate, group = 1, 
                        text = paste("Cuisine: ", term,
-                                    "<br>Coefficient: ", estimate
-                       ))) +
+                                    "<br>Coefficient: ", estimate))) +
+             geom_pointrange(aes(ymin = conf.low, ymax = conf.high), width = 0.1) +
             geom_bar(stat = "identity", fill = "light blue" ) +
             labs(title = "Effect of Restaurant Type on User Ratings", subtitle = "Ratings on a 1-5 scale",
                  x = "Type of Food", y = "Coefficient",caption = "Source: Yelp") +
@@ -471,8 +472,8 @@ server <- function(input, output) {
         filter(term %in% c(input$cuisinex, input$cuisiney, input$cuisinez)) %>%
         ggplot(aes(x = reorder(term, -estimate), y = estimate, group = 1, 
                    text = paste("Cuisine: ", term,
-                                "<br>Coefficient: ", estimate
-                   ))) +
+                                "<br>Coefficient: ", estimate))) +
+        geom_pointrange(aes(ymin = conf.low, ymax = conf.high), width = 0.1) +
         geom_bar(stat = "identity", fill = "dark green") +
         labs(title = "Effect of Restaurant Type on Date Appropriateness", subtitle = "Date appropriateness determined by scraping user reviews for date-related keywords",
              x = "Type of Food", y = "Coefficient",caption = "Source: Yelp") +
@@ -488,8 +489,7 @@ server <- function(input, output) {
                        list(x = 1, y = -.08, text = "Source: Yelp", 
                             showarrow = F, xref='paper', yref='paper', 
                             xanchor='right', yanchor='auto', xshift=0, yshift=0,
-                            font=list(size=12)),
-                  width = 800)
+                            font=list(size=12)))
         })
     
     # Renders date_all
@@ -499,9 +499,9 @@ server <- function(input, output) {
     
         ggplot(aes(x = reorder(term, -estimate), y = estimate, group = 1, 
                    text = paste("Cuisine: ", term,
-                                "<br>Coefficient: ", estimate
-                   ))) +
+                                "<br>Coefficient: ", estimate))) +
             geom_bar(stat = "identity", fill = "dark green" ) +
+            geom_pointrange(aes(ymin = conf.low, ymax = conf.high), width = 0.1) +
             labs(title = "Effect of Restaurant Type on Date Appropriateness", subtitle = "Date appropriateness determined by scraping user reviews for date-related keywords",
                  x = "Type of Food", y = "Coefficient",caption = "Source: Yelp") +
             theme_classic() +
@@ -516,11 +516,14 @@ server <- function(input, output) {
                                               'Date appropriateness determined by scraping user reviews for date-related keywords',
                                               '</sup>')),
                    annotations = 
-                       list(x = 1, y = -.08, text = "Source: Yelp", 
+                       list(x = 1, y = -.10, text = "Source: Yelp", 
                             showarrow = F, xref='paper', yref='paper', 
                             xanchor='right', yanchor='auto', xshift=0, yshift=0,
-                            font=list(size=12))
+                            font=list(size=12)
+                 )
               )
+    
+        
     })
     
     # Render lm_stars_gt
@@ -541,7 +544,7 @@ server <- function(input, output) {
         "conf.high" = "Upper bound") 
     
     })
-    
+  
     
     # Render lm_date_gt
   
@@ -562,6 +565,8 @@ server <- function(input, output) {
             "conf.high" = "Upper bound")
     
     })
+    
+    
     
     
 }
